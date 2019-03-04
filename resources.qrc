@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/plugins/lpis" >
+        <file>icon.png</file>
+    </qresource>
+</RCC>
