@@ -23,9 +23,10 @@
 """
 from PyQt5.QtCore import QSettings, QTranslator, qVersion, QCoreApplication, Qt
 from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QAction
+from PyQt5.QtWidgets import QAction, QApplication
 # Initialize Qt resources from file resources.py
 from .resources import *
+from qgis.core import QgsProject
 
 # Import the code for the DockWidget
 from .lpis_dockwidget import LPISDockWidget
@@ -74,6 +75,9 @@ class LPIS:
 
         self.pluginIsActive = False
         self.dockwidget = None
+
+        self.lpisLayer = None
+        self.workLayer = None
 
 
     # noinspection PyMethodMayBeStatic
@@ -209,10 +213,76 @@ class LPIS:
         del self.toolbar
 
     #--------------------------------------------------------------------------
+    def updateNumbers(self,flpis,fets):
+        self.dockwidget.areaLabel.setText(str(fets.geometry().area()))
+        self.dockwidget.v1Label.setText(str(self.calculateV1(flpis,fets)))
+        self.dockwidget.v2Label.setText(str(self.calculateV2(flpis,fets)))
+        self.dockwidget.condLabel.setText(str(self.calculateCond(flpis,fets)))
+
+    def calculateV1(self,flpis,fets):
+        return 100.0*fets.geometry().area()/flpis.geometry().area()
+
+    def calculateV2(self,flpis,fets):
+        return fets.geometry().area() - flpis.geometry().area()
+    
+    def calculateCond(self,flpis,fets):
+        arlpis = flpis.geometry().area()
+        arets = fets.geometry().area()  
+        v1 = self.calculateV1(flpis,fets)
+        v2 = self.calculateV2(flpis,fets)
+        if arlpis > 5000:
+           if (v1 > 97 and v1 < 103) and (v2 > -10000 and v2 < 10000):
+               return True   
+        elif arlpis > 2000:
+           if v1 > 95 and v1 < 105:
+               return True
+        else:
+           if v1 > 93 and v1 < 107:
+               return True
+        return False
+
+
     def geometryUpdated(self,fid,geometry):
         self.dockwidget.v2Label.setText(str(geometry.area()))
+        self.updateNumbers(self.curLpisFeature,self.workLayer.getFeature(fid))
+    
+    def featureAdded(self,fid):
+        feat = self.workLayer.getFeature(fid)
+        feat["name"] = self.curLpisFeature["name"]
+        self.workLayer.updateFeature(feat)
+        self.updateNumbers(self.curLpisFeature,feat)
+        self.statl.setText("Feature {} added".format(fid))
 
+
+    def workLayerChanged(self,name):
+        self.workLayer = QgsProject.instance().mapLayersByName(name)[0]        
+        self.workLayer.geometryChanged.connect(self.geometryUpdated)
+        self.workLayer.featureAdded.connect(self.featureAdded)
+
+    def lpisLayerChanged(self,name):
+        self.lpisLayer = QgsProject.instance().mapLayersByName(name)[0]        
         
+    def vectorizePolygon(self):
+        selected = list(self.lpisLayer.getSelectedFeatures())
+        if len(selected) == 0:
+                self.statl.setText("Neni vybrany objekt v LPIS vrstve")
+                return
+        if len(selected) > 1:
+                self.statl.setText("Je vybrano vice objektu v LPIS vrstve")
+                return
+        poly = selected[0]
+        self.statl.setText("Vybran polygon {}".format(poly.attribute("name")))
+
+        cb = QApplication.clipboard()
+        cb.clear(mode = cb.Clipboard)
+        cb.setText(str(poly.attribute("name")))
+        
+        self.curLpisFeature = poly
+        self.iface.setActiveLayer(self.workLayer)
+        self.workLayer.startEditing()
+        self.iface.actionAddFeature().trigger()
+
+            
 
 
     def run(self):
@@ -238,7 +308,21 @@ class LPIS:
             self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
             self.dockwidget.show()
 
-            self.dockwidget.v1Label.setText("Baf")
-            layer = self.iface.activeLayer()
-            print("Layer: {}".format(str(layer)))
-            layer.geometryChanged.connect(self.geometryUpdated)
+            self.statl = self.dockwidget.statusLabel
+
+            lpisCombo = self.dockwidget.lpisLayerComboBox
+            etsCombo = self.dockwidget.workLayerComboBox
+            lpisCombo.currentIndexChanged[str].connect(self.lpisLayerChanged)
+            etsCombo.currentIndexChanged[str].connect(self.workLayerChanged)
+            self.dockwidget.vectorizeButton.clicked.connect(self.vectorizePolygon)
+
+            layers = QgsProject.instance().mapLayers()
+            for layer in layers.values():
+                lpisCombo.addItem(layer.name())
+                etsCombo.addItem(layer.name())
+            
+            self.statl.setText(etsCombo.currentText())
+            self.workLayer = QgsProject.instance().mapLayersByName(etsCombo.currentData())[0] 
+            self.lpisLayer = QgsProject.instance().mapLayersByName(lpisCombo.currentData())[0]        
+
+
