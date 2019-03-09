@@ -32,6 +32,9 @@ from qgis.core import QgsProject
 from .lpis_dockwidget import LPISDockWidget
 import os.path
 
+LPIS_ID_ATTRIBUTE = "NKOD_PB"
+ETS_ID_ATTRIBUTE = "NKOD"
+
 
 class LPIS:
     """QGIS Plugin Implementation."""
@@ -248,7 +251,7 @@ class LPIS:
     
     def featureAdded(self,fid):
         feat = self.workLayer.getFeature(fid)
-        feat["name"] = self.curLpisFeature["name"]
+        feat[ETS_ID_ATTRIBUTE] = self.curLpisFeature[LPIS_ID_ATTRIBUTE]
         self.workLayer.updateFeature(feat)
         self.updateNumbers(self.curLpisFeature,feat)
         self.statl.setText("Feature {} added".format(fid))
@@ -271,11 +274,11 @@ class LPIS:
                 self.statl.setText("Je vybrano vice objektu v LPIS vrstve")
                 return
         poly = selected[0]
-        self.statl.setText("Vybran polygon {}".format(poly.attribute("name")))
+        self.statl.setText("Vybran polygon {}".format(poly.attribute(LPIS_ID_ATTRIBUTE)))
 
         cb = QApplication.clipboard()
         cb.clear(mode = cb.Clipboard)
-        cb.setText(str(poly.attribute("name")))
+        cb.setText(str(poly.attribute(LPIS_ID_ATTRIBUTE)))
         
         self.curLpisFeature = poly
         self.iface.setActiveLayer(self.workLayer)
@@ -322,7 +325,7 @@ class LPIS:
                 etsCombo.addItem(layer.name())
             
             self.statl.setText(etsCombo.currentText())
-            self.workLayer = QgsProject.instance().mapLayersByName(etsCombo.currentData())[0] 
-            self.lpisLayer = QgsProject.instance().mapLayersByName(lpisCombo.currentData())[0]        
+            self.workLayer = QgsProject.instance().mapLayersByName(etsCombo.currentText())[0] 
+            self.lpisLayer = QgsProject.instance().mapLayersByName(lpisCombo.currentText())[0]        
 
 
